@@ -1,15 +1,17 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Mic, 
   MicOff, 
   Timer, 
-  ChevronDown, 
-  ChevronUp,
+  Phone,
+  PhoneOff,
   Lightbulb,
   Send,
   Zap
 } from "lucide-react";
+import { useVapi } from "@/hooks/useVapi";
+import { VoicePulseOrb } from "@/components/ui/VoiceWaveAnimation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/button";
@@ -22,17 +24,50 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+// Question data - in production this would come from route params/Supabase
+const currentQuestion = {
+  title: "Design a feature to increase Uber driver retention",
+  prompt: "You're a PM at Uber. Driver churn has increased 15% year-over-year. The executive team is concerned about the long-term sustainability of the marketplace. Design a feature or set of features to improve driver retention and satisfaction. Context: Uber operates in 70+ countries with 5M+ active drivers. Key competitors include Lyft (US), Ola (India), and Didi (China).",
+  company: "Uber",
+  category: "Product Sense",
+  difficulty: "Hard"
+};
+
 const VoiceInterview = () => {
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [answer, setAnswer] = useState("");
   const [confidence, setConfidence] = useState([50]);
   const [timeRemaining, setTimeRemaining] = useState(25 * 60); // 25 minutes
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stressMode, setStressMode] = useState(false);
 
+  // Vapi integration
+  const {
+    isCallActive,
+    isSpeaking,
+    isConnecting,
+    volumeLevel,
+    startCall,
+    endCall,
+    transcript,
+  } = useVapi({
+    questionTitle: currentQuestion.title,
+    questionPrompt: currentQuestion.prompt,
+  });
+
   const toggleVoice = useCallback(() => {
-    setIsVoiceActive((prev) => !prev);
-  }, []);
+    if (isCallActive) {
+      endCall();
+    } else {
+      startCall();
+    }
+  }, [isCallActive, startCall, endCall]);
+
+  // Append transcript to answer
+  useEffect(() => {
+    if (transcript.trim()) {
+      setAnswer(prev => prev + transcript);
+    }
+  }, [transcript]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -120,36 +155,66 @@ const VoiceInterview = () => {
             </Accordion>
 
             {/* Voice AI Button */}
-            <motion.div className="mt-6">
+            <motion.div className="mt-6 space-y-4">
+              {/* Voice Orb Animation */}
+              <AnimatePresence>
+                {(isCallActive || isConnecting) && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="flex justify-center py-4"
+                  >
+                    <VoicePulseOrb 
+                      isActive={isCallActive} 
+                      volumeLevel={volumeLevel}
+                      isConnecting={isConnecting}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <Button
                 onClick={toggleVoice}
-                variant={isVoiceActive ? "default" : "outline"}
-                className={`w-full gap-3 py-6 ${isVoiceActive ? "glow-pulse" : ""}`}
+                variant={isCallActive ? "destructive" : "default"}
+                className={`w-full gap-3 py-6 ${isCallActive ? "" : "glow-pulse"}`}
+                disabled={isConnecting}
               >
-                {isVoiceActive ? (
+                {isConnecting ? (
                   <>
                     <motion.div
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1.5 }}
-                      className="h-3 w-3 rounded-full bg-primary-foreground"
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                      className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent"
                     />
-                    AI Listening...
+                    Connecting...
+                  </>
+                ) : isCallActive ? (
+                  <>
+                    <PhoneOff className="h-5 w-5" />
+                    End Interview
                   </>
                 ) : (
                   <>
-                    <Mic className="h-5 w-5" />
+                    <Phone className="h-5 w-5" />
                     Start Voice AI Interview
                   </>
                 )}
               </Button>
-              {isVoiceActive && (
-                <motion.p
+              
+              {isCallActive && (
+                <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 text-center text-sm text-muted-foreground"
+                  className="rounded-lg bg-primary/10 p-3 text-center"
                 >
-                  Speak naturally. The AI will ask follow-up questions.
-                </motion.p>
+                  <p className="text-sm text-primary">
+                    {isSpeaking ? "🎤 AI is speaking..." : "🎧 Listening to you..."}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Speak naturally. The AI will ask follow-up questions.
+                  </p>
+                </motion.div>
               )}
             </motion.div>
           </div>
